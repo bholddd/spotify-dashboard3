@@ -189,28 +189,49 @@ class SpotifyWidget:
         try:
             import ctypes
 
+            # Force DWM compositing on the overrideredirect window.
+            # Without this, pixels outside the rounded region render as solid
+            # black instead of showing the desktop behind the widget.
+            self.root.wm_attributes('-alpha', 0.99)
+
+            # Ensure the window handle is ready before making Win32 calls.
+            self.root.update_idletasks()
+            hwnd = self.root.winfo_id()
+            if not hwnd:
+                return
+
             corner_radius = 24
-            for hwnd in (self.root.winfo_id(), ctypes.windll.user32.GetParent(self.root.winfo_id())):
-                if hwnd:
-                    region = ctypes.windll.gdi32.CreateRoundRectRgn(
+
+            # Apply the rounded clip region.  Create a fresh region handle for
+            # each HWND — SetWindowRgn transfers ownership of the handle so
+            # reusing the same one for a second call would pass a dangling ptr.
+            for h in (hwnd, ctypes.windll.user32.GetParent(hwnd)):
+                if h:
+                    rgn = ctypes.windll.gdi32.CreateRoundRectRgn(
                         0,
                         0,
                         self.widget_width + 1,
                         self.widget_height + 1,
                         corner_radius,
-                        corner_radius
+                        corner_radius,
                     )
-                    ctypes.windll.user32.SetWindowRgn(hwnd, region, True)
+                    ctypes.windll.user32.SetWindowRgn(h, rgn, True)
 
-            DWMWA_WINDOW_CORNER_PREFERENCE = 33
-            DWMWCP_ROUND = 2
-            preference = ctypes.c_int(DWMWCP_ROUND)
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                self.root.winfo_id(),
-                DWMWA_WINDOW_CORNER_PREFERENCE,
-                ctypes.byref(preference),
-                ctypes.sizeof(preference)
-            )
+            # Windows 11+: also request native rounded corners via DWM so the
+            # drop shadow and anti-aliasing look correct at the edges.
+            try:
+                DWMWA_WINDOW_CORNER_PREFERENCE = 33
+                DWMWCP_ROUND = 2
+                preference = ctypes.c_int(DWMWCP_ROUND)
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                    ctypes.byref(preference),
+                    ctypes.sizeof(preference),
+                )
+            except Exception:
+                pass
+
         except Exception:
             pass
 
@@ -409,13 +430,14 @@ class SpotifyWidget:
         # Pack settings frame
         self.settings_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         
-        # Title
+        # Title — use fg_color so it's always legible against secondary_bg,
+        # even in themes where accent_color == secondary_bg (e.g. fiery_arctic).
         title_label = tk.Label(
             self.settings_frame,
             text="Settings",
             font=("Segoe UI", 10, "bold"),
             bg=self.secondary_bg,
-            fg=self.accent_color
+            fg=self.fg_color,
         )
         title_label.pack(pady=8)
         
@@ -425,7 +447,7 @@ class SpotifyWidget:
             text="Color Theme",
             font=("Segoe UI", 8),
             bg=self.secondary_bg,
-            fg=self.text_secondary
+            fg=self.fg_color,
         )
         palette_label.pack(anchor=tk.W, padx=15, pady=(6, 4))
         
@@ -450,13 +472,13 @@ class SpotifyWidget:
             )
             palette_btn.pack(side=tk.LEFT, padx=2, expand=True, fill=tk.X)
         
-        # Demo mode info
+        # Demo mode info — same fix: fg_color guarantees contrast on secondary_bg.
         demo_label = tk.Label(
             self.settings_frame,
             text=f"Mode: {'DEMO' if self.demo_mode else 'Live'}",
             font=("Segoe UI", 7),
             bg=self.secondary_bg,
-            fg=self.accent_color if self.demo_mode else self.text_secondary
+            fg=self.fg_color,
         )
         demo_label.pack(pady=(8, 0))
         

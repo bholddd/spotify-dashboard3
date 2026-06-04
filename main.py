@@ -8,6 +8,7 @@ from tkinter import ttk
 import threading
 import json
 import os
+import traceback
 
 from spotify_auth import SpotifyAuthenticator
 from spotify_api import SpotifyAPI
@@ -136,7 +137,7 @@ class SpotifyWidget:
         # Add rounded corners effect
         self.apply_rounded_corners()
         
-        # Create UI
+        # Create UI first
         self.create_ui()
         
         # Make window draggable
@@ -145,7 +146,14 @@ class SpotifyWidget:
         # Position window
         self.load_window_position()
         
-        # Try to authenticate
+        # Load demo data immediately
+        self.demo_mode = True
+        self.artists_data = self.DEMO_ARTISTS
+        self.tracks_data = self.DEMO_TRACKS
+        self.display_artists()
+        self.display_songs()
+        
+        # Try to authenticate in background
         self.authenticate()
 
     def load_settings(self):
@@ -564,17 +572,7 @@ class SpotifyWidget:
             self.load_data()
         except Exception as e:
             print(f"Auth error: {e}")
-            # Fallback to demo mode
-            self.enable_demo_mode()
-
-    def enable_demo_mode(self):
-        """Enable demo mode with fake data"""
-        self.demo_mode = True
-        self.artists_data = self.DEMO_ARTISTS
-        self.tracks_data = self.DEMO_TRACKS
-        self.root.after(0, self.display_artists)
-        self.root.after(0, self.display_songs)
-        print("Demo mode enabled - showing sample data")
+            traceback.print_exc()
 
     def change_time_range(self, time_code):
         """Change time range and reload data"""
@@ -604,18 +602,16 @@ class SpotifyWidget:
             artists = self.sp_api.get_top_artists(self.current_time_range, limit=15)
             tracks = self.sp_api.get_top_tracks(self.current_time_range, limit=15)
             
-            if not artists or not tracks:
-                self.enable_demo_mode()
-                return
-            
-            self.artists_data = artists
-            self.tracks_data = tracks
-            
-            self.root.after(0, self.display_artists)
-            self.root.after(0, self.display_songs)
+            if artists and tracks:
+                self.artists_data = artists
+                self.tracks_data = tracks
+                self.demo_mode = False
+                
+                self.root.after(0, self.display_artists)
+                self.root.after(0, self.display_songs)
         except Exception as e:
             print(f"Data load error: {e}")
-            self.enable_demo_mode()
+            traceback.print_exc()
         finally:
             self.loading = False
 

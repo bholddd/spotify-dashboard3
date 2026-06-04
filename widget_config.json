@@ -1,8 +1,8 @@
 {
-  "transparency": false,
+  "transparency": 100,
   "drop_shadow": false,
   "width": 380,
   "height": 450,
-  "x": 1386,
-  "y": 564
+  "x": null,
+  "y": null
 }

@@ -9,6 +9,7 @@ import threading
 import json
 import os
 import traceback
+import sys
 
 from spotify_auth import SpotifyAuthenticator
 from spotify_api import SpotifyAPI
@@ -101,11 +102,17 @@ class SpotifyWidget:
     def __init__(self, root):
         self.root = root
         self.root.title("Spotify Widget")
-        self.root.geometry("340x260")
+        self.widget_width = 320
+        self.visible_rows = 5
+        self.row_height = 38
+        self.control_height = 34
+        self.content_height = self.visible_rows * self.row_height
+        self.widget_height = self.content_height + self.control_height
+        self.root.geometry(f"{self.widget_width}x{self.widget_height}")
         self.root.resizable(False, False)
         
-        # Make window borderless but NOT overrideredirect yet
-        # self.root.overrideredirect(True)
+        # Remove the operating system window border for widget-style display.
+        self.root.overrideredirect(True)
         
         # Make window draggable
         self.drag_data = {"x": 0, "y": 0}
@@ -139,9 +146,10 @@ class SpotifyWidget:
         self.setup_styles()
         
         # Set window properties
-        self.root.geometry("320x380")
+        self.root.geometry(f"{self.widget_width}x{self.widget_height}")
         self.root.resizable(False, False)
         self.root.configure(bg=self.bg_color)
+        self.enable_rounded_corners()
         
         # Create UI
         print("Creating UI...")
@@ -172,6 +180,38 @@ class SpotifyWidget:
         # Try to authenticate in background
         # self.authenticate()
 
+    def enable_rounded_corners(self):
+        """Ask Windows to render rounded corners when supported."""
+        if sys.platform != "win32":
+            return
+
+        try:
+            import ctypes
+
+            hwnd = self.root.winfo_id()
+            corner_radius = 18
+            region = ctypes.windll.gdi32.CreateRoundRectRgn(
+                0,
+                0,
+                self.widget_width + 1,
+                self.widget_height + 1,
+                corner_radius,
+                corner_radius
+            )
+            ctypes.windll.user32.SetWindowRgn(hwnd, region, True)
+
+            DWMWA_WINDOW_CORNER_PREFERENCE = 33
+            DWMWCP_ROUND = 2
+            preference = ctypes.c_int(DWMWCP_ROUND)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                ctypes.byref(preference),
+                ctypes.sizeof(preference)
+            )
+        except Exception:
+            pass
+
     def load_settings(self):
         """Load widget settings from config file"""
         default_settings = {
@@ -184,7 +224,13 @@ class SpotifyWidget:
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file, 'r') as f:
-                    return json.load(f)
+                    loaded_settings = json.load(f)
+                    default_settings.update(loaded_settings)
+
+                    if isinstance(default_settings.get("transparency"), bool):
+                        default_settings["transparency"] = 100
+
+                    return default_settings
             except:
                 return default_settings
         
@@ -207,11 +253,11 @@ class SpotifyWidget:
         if self.settings.get("x") and self.settings.get("y"):
             self.root.geometry(f"+{self.settings['x']}+{self.settings['y']}")
         else:
-            # Default to center of screen
+            # Default to bottom right of the screen.
             screen_width = self.root.winfo_screenwidth()
             screen_height = self.root.winfo_screenheight()
-            x = (screen_width - 320) // 2
-            y = (screen_height - 380) // 2
+            x = screen_width - self.widget_width - 24
+            y = screen_height - self.widget_height - 64
             self.root.geometry(f"+{x}+{y}")
 
     def apply_transparency(self):
@@ -235,6 +281,7 @@ class SpotifyWidget:
         # Main container
         main_frame = tk.Frame(self.root, bg=self.bg_color)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+        self.main_frame = main_frame
         
         # Top control bar with tabs and time range
         self.control_frame = tk.Frame(
@@ -318,7 +365,8 @@ class SpotifyWidget:
         # Create content frame (for artists/songs)
         self.content_frame = tk.Frame(self.content_settings_frame, bg=self.bg_color)
         self.content_frame.pack(fill=tk.BOTH, expand=False, padx=0, pady=0)
-        self.content_frame.configure(height=220)
+        self.content_frame.configure(height=self.content_height)
+        self.content_frame.pack_propagate(False)
         
         # Create scrollable content for artists
         self.artists_canvas = tk.Canvas(
@@ -339,7 +387,7 @@ class SpotifyWidget:
         
         self.artists_canvas.config(yscrollcommand=artists_scroll.set)
         self.artists_content = tk.Frame(self.artists_canvas, bg=self.bg_color)
-        self.artists_canvas.create_window((0, 0), window=self.artists_content, anchor=tk.NW, width=310)
+        self.artists_canvas.create_window((0, 0), window=self.artists_content, anchor=tk.NW, width=self.widget_width - 10)
         
         # Create scrollable content for songs
         self.songs_canvas = tk.Canvas(
@@ -358,7 +406,7 @@ class SpotifyWidget:
         
         self.songs_canvas.config(yscrollcommand=songs_scroll.set)
         self.songs_content = tk.Frame(self.songs_canvas, bg=self.bg_color)
-        self.songs_canvas.create_window((0, 0), window=self.songs_content, anchor=tk.NW, width=310)
+        self.songs_canvas.create_window((0, 0), window=self.songs_content, anchor=tk.NW, width=self.widget_width - 10)
         
         # Store canvases for switching
         self.canvases = {
@@ -376,6 +424,50 @@ class SpotifyWidget:
         # Create settings frame (hidden by default)
         self.settings_frame = tk.Frame(self.content_settings_frame, bg=self.secondary_bg)
 
+        self.hide_controls()
+        self.bind_hover_controls()
+
+    def bind_hover_controls(self):
+        """Show controls while the pointer is over the widget."""
+        hover_widgets = [
+            self.root,
+            self.main_frame,
+            self.control_frame,
+            self.content_settings_frame,
+            self.content_frame,
+            self.artists_canvas,
+            self.artists_content,
+            self.songs_canvas,
+            self.songs_content,
+            self.settings_frame,
+        ]
+
+        for widget in hover_widgets:
+            widget.bind("<Enter>", self.show_controls, add="+")
+            widget.bind("<Leave>", self.hide_controls_if_pointer_outside, add="+")
+
+    def show_controls(self, event=None):
+        if not self.control_frame.winfo_ismapped():
+            self.control_frame.pack(fill=tk.X, before=self.content_settings_frame)
+
+    def hide_controls(self):
+        if not self.settings_open:
+            self.control_frame.pack_forget()
+
+    def hide_controls_if_pointer_outside(self, event=None):
+        if self.settings_open:
+            return
+
+        x = self.root.winfo_pointerx()
+        y = self.root.winfo_pointery()
+        root_x = self.root.winfo_rootx()
+        root_y = self.root.winfo_rooty()
+        inside_x = root_x <= x < root_x + self.root.winfo_width()
+        inside_y = root_y <= y < root_y + self.root.winfo_height()
+
+        if not (inside_x and inside_y):
+            self.hide_controls()
+
     def toggle_settings(self):
         """Toggle settings panel"""
         if self.settings_open:
@@ -387,6 +479,7 @@ class SpotifyWidget:
         """Open settings panel"""
         self.settings_open = True
         self.dragging_enabled = False
+        self.show_controls()
         self.settings_btn.config(bg=self.accent_color, fg=self.bg_color)
         
         # Hide content
@@ -507,6 +600,7 @@ class SpotifyWidget:
         
         # Save settings
         self.save_settings()
+        self.hide_controls_if_pointer_outside()
 
     def change_transparency(self, value):
         """Change widget transparency"""
@@ -657,8 +751,9 @@ class SpotifyWidget:
 
     def create_artist_item(self, rank, artist):
         """Create artist item"""
-        item_frame = tk.Frame(self.artists_content, bg=self.tertiary_bg)
+        item_frame = tk.Frame(self.artists_content, bg=self.tertiary_bg, height=self.row_height - 6)
         item_frame.pack(fill=tk.X, padx=6, pady=3)
+        item_frame.pack_propagate(False)
         
         # Rank circle
         rank_label = tk.Label(
@@ -689,8 +784,9 @@ class SpotifyWidget:
 
     def create_track_item(self, rank, track):
         """Create track item"""
-        item_frame = tk.Frame(self.songs_content, bg=self.tertiary_bg)
+        item_frame = tk.Frame(self.songs_content, bg=self.tertiary_bg, height=self.row_height - 6)
         item_frame.pack(fill=tk.X, padx=6, pady=3)
+        item_frame.pack_propagate(False)
         
         # Rank circle
         rank_label = tk.Label(
@@ -718,17 +814,6 @@ class SpotifyWidget:
             justify=tk.LEFT
         )
         name_label.pack(anchor=tk.W)
-        
-        artist_label = tk.Label(
-            info_frame,
-            text=track['artist'],
-            font=("Segoe UI", 6),
-            bg=self.tertiary_bg,
-            fg=self.text_secondary,
-            wraplength=230,
-            justify=tk.LEFT
-        )
-        artist_label.pack(anchor=tk.W)
 
     def on_tab_changed(self, event):
         """Handle tab change"""

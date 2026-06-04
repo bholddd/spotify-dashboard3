@@ -104,8 +104,8 @@ class SpotifyWidget:
         self.root.geometry("320x380")
         self.root.resizable(False, False)
         
-        # Make window borderless
-        self.root.overrideredirect(True)
+        # Make window borderless but NOT overrideredirect yet
+        # self.root.overrideredirect(True)
         
         # Make window draggable
         self.drag_data = {"x": 0, "y": 0}
@@ -134,9 +134,6 @@ class SpotifyWidget:
         # Apply transparency
         self.apply_transparency()
         
-        # Add rounded corners effect
-        self.apply_rounded_corners()
-        
         # Create UI first
         self.create_ui()
         
@@ -152,6 +149,8 @@ class SpotifyWidget:
         self.tracks_data = self.DEMO_TRACKS
         self.display_artists()
         self.display_songs()
+        
+        print("Widget loaded with demo data!")
         
         # Try to authenticate in background
         self.authenticate()
@@ -186,6 +185,8 @@ class SpotifyWidget:
 
     def load_window_position(self):
         """Load saved window position or default to bottom right"""
+        self.root.update_idletasks()
+        
         if self.settings.get("x") and self.settings.get("y"):
             self.root.geometry(f"+{self.settings['x']}+{self.settings['y']}")
         else:
@@ -200,10 +201,6 @@ class SpotifyWidget:
         """Apply transparency based on slider value"""
         alpha = self.transparency / 100.0
         self.root.attributes('-alpha', alpha)
-
-    def apply_rounded_corners(self):
-        """Apply rounded corners effect using visual styling"""
-        self.root.attributes('-transparentcolor', '#000000')
 
     def setup_styles(self):
         """Setup custom styles for the widget"""
@@ -364,7 +361,6 @@ class SpotifyWidget:
         
         # Create settings frame (hidden by default)
         self.settings_frame = tk.Frame(self.content_settings_frame, bg=self.secondary_bg)
-        # Don't pack initially - will be shown with toggle_settings
 
     def toggle_settings(self):
         """Toggle settings panel"""
@@ -571,8 +567,7 @@ class SpotifyWidget:
             # Load initial data
             self.load_data()
         except Exception as e:
-            print(f"Auth error: {e}")
-            traceback.print_exc()
+            print(f"Auth error (using demo mode): {e}")
 
     def change_time_range(self, time_code):
         """Change time range and reload data"""
@@ -609,9 +604,9 @@ class SpotifyWidget:
                 
                 self.root.after(0, self.display_artists)
                 self.root.after(0, self.display_songs)
+                print("Switched to live data!")
         except Exception as e:
-            print(f"Data load error: {e}")
-            traceback.print_exc()
+            print(f"Data load error (staying in demo mode): {e}")
         finally:
             self.loading = False
 
@@ -771,7 +766,10 @@ def main():
     root.configure(bg="#0F0F0F")
     root.resizable(False, False)
     
+    print("Starting widget...")
     app = SpotifyWidget(root)
+    print("Widget created, showing window...")
+    root.deiconify()
     root.mainloop()
     
     # Save settings on close

@@ -101,7 +101,7 @@ class SpotifyWidget:
     def __init__(self, root):
         self.root = root
         self.root.title("Spotify Widget")
-        self.root.geometry("320x380")
+        self.root.geometry("340x260")
         self.root.resizable(False, False)
         
         # Make window borderless but NOT overrideredirect yet
@@ -153,7 +153,7 @@ class SpotifyWidget:
         print("Widget loaded with demo data!")
         
         # Try to authenticate in background
-        self.authenticate()
+        # self.authenticate()
 
     def load_settings(self):
         """Load widget settings from config file"""
@@ -228,12 +228,16 @@ class SpotifyWidget:
         main_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         
         # Top control bar with tabs and time range
-        control_frame = tk.Frame(main_frame, bg=self.secondary_bg)
-        control_frame.pack(fill=tk.X, padx=0, pady=0)
+        self.control_frame = tk.Frame(
+            main_frame,
+            bg=self.secondary_bg
+        )
+
+        self.control_frame.pack(fill=tk.X)
         
         # Left frame for tabs
-        tabs_frame = tk.Frame(control_frame, bg=self.secondary_bg)
-        tabs_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=0, pady=0)
+        tabs_frame = tk.Frame(self.control_frame, bg=self.secondary_bg)
+        tabs_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         # Create notebook (tabs) for Artists/Songs
         self.notebook = ttk.Notebook(tabs_frame)
@@ -251,7 +255,7 @@ class SpotifyWidget:
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         
         # Right frame for time range and settings
-        buttons_frame = tk.Frame(control_frame, bg=self.secondary_bg)
+        buttons_frame = tk.Frame(self.control_frame, bg=self.secondary_bg)
         buttons_frame.pack(side=tk.RIGHT, padx=6, pady=4)
         
         self.time_buttons = {}
@@ -304,7 +308,8 @@ class SpotifyWidget:
         
         # Create content frame (for artists/songs)
         self.content_frame = tk.Frame(self.content_settings_frame, bg=self.bg_color)
-        self.content_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+        self.content_frame.pack(fill=tk.BOTH, expand=False, padx=0, pady=0)
+        self.content_frame.configure(height=220)
         
         # Create scrollable content for artists
         self.artists_canvas = tk.Canvas(
@@ -671,19 +676,6 @@ class SpotifyWidget:
             justify=tk.LEFT
         )
         name_label.pack(anchor=tk.W)
-        
-        # Popularity bar
-        popularity = artist['popularity']
-        bar_frame = tk.Frame(info_frame, bg=self.secondary_bg, height=2)
-        bar_frame.pack(fill=tk.X, pady=(2, 0))
-        
-        bar_fill = tk.Frame(
-            bar_frame,
-            bg=self.accent_color,
-            height=2
-        )
-        bar_fill.pack(side=tk.LEFT, fill=tk.BOTH)
-        bar_fill.config(width=int(230 * popularity / 100))
 
     def create_track_item(self, rank, track):
         """Create track item"""
@@ -727,19 +719,6 @@ class SpotifyWidget:
             justify=tk.LEFT
         )
         artist_label.pack(anchor=tk.W)
-        
-        # Popularity bar
-        popularity = track['popularity']
-        bar_frame = tk.Frame(info_frame, bg=self.secondary_bg, height=2)
-        bar_frame.pack(fill=tk.X, pady=(2, 0))
-        
-        bar_fill = tk.Frame(
-            bar_frame,
-            bg=self.accent_color,
-            height=2
-        )
-        bar_fill.pack(side=tk.LEFT, fill=tk.BOTH)
-        bar_fill.config(width=int(230 * popularity / 100))
 
     def on_tab_changed(self, event):
         """Handle tab change"""

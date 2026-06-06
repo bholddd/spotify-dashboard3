@@ -15,7 +15,7 @@ import requests
 from PIL import Image, ImageDraw, ImageTk
 from spotify_auth import SpotifyAuthenticator
 from spotify_api import SpotifyAPI
-from fisheye_overlay import FisheyeOverlay   # ← CHANGE 1: new import
+from fisheye_overlay import FisheyeOverlay
 
 
 # ─── Retro font ─────────────────────────────────────────────────────────
@@ -119,10 +119,6 @@ class SpotifyWidget:
         luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
         return "#000000" if luminance > 0.5 else "#FFFFFF"
 
-    # ── CHANGE 2: _apply_fisheye() removed entirely ───────────────────────────
-    # The CRT bulge is now handled by FisheyeOverlay (fisheye_overlay.py)
-    # which distorts the whole window, not individual images.
-
     # ── Init ───────────────────────────────────────────────────────────
 
     def __init__(self, root):
@@ -149,13 +145,14 @@ class SpotifyWidget:
         self.demo_mode     = False
         self.image_cache   = {}
         self.item_images   = []
-        self.fisheye_enabled = True
+        self.fisheye_enabled = False
+        self._fisheye_overlay = None
 
         # Settings
         self.config_file = "widget_config.json"
         self.settings    = self.load_settings()
         self.current_palette = self.settings.get("palette", "terminal")
-        self.fisheye_enabled = self.settings.get("fisheye", True)
+        self.fisheye_enabled = self.settings.get("fisheye", False)
         if self.current_palette not in self.PALETTES:
             self.current_palette = "terminal"
 
@@ -186,19 +183,16 @@ class SpotifyWidget:
         self.display_songs()
         print("Widget loaded with demo data!")
 
-        # ── CHANGE 3: whole-widget CRT fisheye overlay ────────────────────
-        # Created last so it sits on top of everything; enabled state comes
-        # from saved settings.
-        self._fisheye_overlay = FisheyeOverlay(
-            self.root, enabled=self.fisheye_enabled
-        )
+        # Create fisheye overlay only if enabled
+        if self.fisheye_enabled:
+            self._fisheye_overlay = FisheyeOverlay(self.root, enabled=True)
 
         # self.authenticate()   # Uncomment to enable live Spotify data
 
     # ── Settings persistence ──────────────────────────────────────────────────
 
     def load_settings(self):
-        defaults = {"palette": "terminal", "x": None, "y": None, "fisheye": True}
+        defaults = {"palette": "terminal", "x": None, "y": None, "fisheye": False}
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file) as f:
@@ -264,10 +258,16 @@ class SpotifyWidget:
         if reopen:
             self.open_settings()
 
-    # ── CHANGE 4: toggle_fisheye — instant effect via overlay ─────────────────
     def toggle_fisheye(self):
         self.fisheye_enabled = not self.fisheye_enabled
-        self._fisheye_overlay.set_enabled(self.fisheye_enabled)
+        if self.fisheye_enabled:
+            if self._fisheye_overlay is None:
+                self._fisheye_overlay = FisheyeOverlay(self.root, enabled=True)
+            else:
+                self._fisheye_overlay.set_enabled(True)
+        else:
+            if self._fisheye_overlay is not None:
+                self._fisheye_overlay.set_enabled(False)
         # Re-open settings panel so the ON/OFF label refreshes immediately
         if self.settings_open:
             self.open_settings()
@@ -468,7 +468,6 @@ class SpotifyWidget:
             fill=tk.X, padx=10, pady=4
         )
 
-        # ── CHANGE 4 continued: label reflects live state immediately ──────
         fisheye_status = "ON" if self.fisheye_enabled else "OFF"
         fisheye_color  = self.fg_color if self.fisheye_enabled else self.text_secondary
         tk.Label(
@@ -647,11 +646,10 @@ class SpotifyWidget:
         self.songs_canvas.configure(scrollregion=self.songs_canvas.bbox("all"))
         self.songs_canvas.itemconfigure(self.songs_window, width=self.widget_width)
 
-    # ── CHANGE 5: load_item_image — fisheye removed from per-image logic ──────
     def load_item_image(self, image_url, size=38):
         if not image_url:
             return None
-        key = (image_url, size)          # fisheye_enabled removed from key
+        key = (image_url, size)
         if key in self.image_cache:
             return self.image_cache[key]
         try:
@@ -661,7 +659,6 @@ class SpotifyWidget:
             img.thumbnail((size, size), Image.LANCZOS)
             square = Image.new("RGB", (size, size), self.tertiary_bg)
             square.paste(img, ((size - img.width) // 2, (size - img.height) // 2))
-            # No per-image fisheye — the overlay handles the whole window
             photo = ImageTk.PhotoImage(square)
             self.image_cache[key] = photo
             return photo
@@ -831,9 +828,9 @@ def main():
     root = tk.Tk()
     app  = SpotifyWidget(root)
     root.mainloop()
-    # ── CHANGE 7: clean overlay shutdown ──────────────────────────────────
     try:
-        app._fisheye_overlay.destroy()
+        if app._fisheye_overlay:
+            app._fisheye_overlay.destroy()
     except Exception:
         pass
     app.save_settings()

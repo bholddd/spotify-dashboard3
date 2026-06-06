@@ -91,21 +91,21 @@ class SpotifyWidget:
     ]
 
     DEMO_TRACKS = [
-        {"name": "Blinding Lights",      "artist": "The Weeknd",                    "album": "After Hours",               "popularity": 94, "url": "https://open.spotify.com/track/0VjIjW4GlUZAMYd2v[...]
-        {"name": "One Dance",            "artist": "Drake ft. Wizkid & Kyla",       "album": "Views",                     "popularity": 91, "url": "https://open.spotify.com/track/1301WleyT98MSxVHP[...]
-        {"name": "Levitating",           "artist": "Dua Lipa ft. DaBaby",           "album": "Future Nostalgia",          "popularity": 93, "url": "https://open.spotify.com/track/0dGsSpZcaIiOUieK"[...]
-        {"name": "Shape of You",         "artist": "Ed Sheeran",                    "album": "÷",                         "popularity": 95, "url": "https://open.spotify.com/track/7qiZfU4dY1lsylv"[...]
-        {"name": "Peaches",              "artist": "Justin Bieber ft. Daniel Caesar","album": "Justice",                  "popularity": 89, "url": "https://open.spotify.com/track/4cOdK2wGLETKBW3P"[...]
-        {"name": "Anti-Hero",            "artist": "Taylor Swift",                  "album": "Midnights",                 "popularity": 96, "url": "https://open.spotify.com/track/0V3dsPmy4NqIUZSp"[...]
-        {"name": "As It Was",            "artist": "Harry Styles",                  "album": "Harry's House",             "popularity": 92, "url": "https://open.spotify.com/track/7qiZfU4dY1lsylvN[...]
-        {"name": "Heat Waves",           "artist": "Glass Animals",                 "album": "Dreamland",                 "popularity": 88, "url": "https://open.spotify.com/track/2takcwFXGpVSXi3R[...]
-        {"name": "Sunroof",              "artist": "Nicky Youre",                   "album": "Sunroof",                   "popularity": 87, "url": "https://open.spotify.com/track/4rVrcmK72nG8eQ5B[...]
-        {"name": "Running Up That Hill", "artist": "Kate Bush",                     "album": "Stranger Things Vol. 1",    "popularity": 90, "url": "https://open.spotify.com/track/4cOdK2wGLETKBW3P[...]
-        {"name": "Flowers",             "artist": "Miley Cyrus",                   "album": "Endless Summer Vacation",   "popularity": 91, "url": "https://open.spotify.com/track/4rVrcmK72nG8eQ5Bo[...]
-        {"name": "Industry Baby",        "artist": "Lil Nas X & Jack Harlow",       "album": "Montero",                   "popularity": 85, "url": "https://open.spotify.com/track/2takcwFXGpVSXi3R[...]
-        {"name": "Vampire",              "artist": "Olivia Rodrigo",                "album": "GUTS",                      "popularity": 84, "url": "https://open.spotify.com/track/2takcwFXGpVSXi3R[...]
-        {"name": "Dance the Night",      "artist": "Dua Lipa",                      "album": "Barbie The Album",          "popularity": 89, "url": "https://open.spotify.com/track/2takcwFXGpVSXi3R[...]
-        {"name": "Cruel Summer",         "artist": "Taylor Swift",                  "album": "Lover",                     "popularity": 92, "url": "https://open.spotify.com/track/7qiZfU4dY1lsylvN[...]
+        {"name": "Blinding Lights",      "artist": "The Weeknd",                    "album": "After Hours",               "popularity": 94, "url": "https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXV6hS"},
+        {"name": "One Dance",            "artist": "Drake ft. Wizkid & Kyla",       "album": "Views",                     "popularity": 91, "url": "https://open.spotify.com/track/1301WleyT98MSxVHP"},
+        {"name": "Levitating",           "artist": "Dua Lipa ft. DaBaby",           "album": "Future Nostalgia",          "popularity": 93, "url": "https://open.spotify.com/track/0dGsSpZcaIiOUieK6"},
+        {"name": "Shape of You",         "artist": "Ed Sheeran",                    "album": "÷",                         "popularity": 95, "url": "https://open.spotify.com/track/7qiZfU4dY1lsylvN8"},
+        {"name": "Peaches",              "artist": "Justin Bieber ft. Daniel Caesar","album": "Justice",                  "popularity": 89, "url": "https://open.spotify.com/track/4cOdK2wGLETKBW3P"},
+        {"name": "Anti-Hero",            "artist": "Taylor Swift",                  "album": "Midnights",                 "popularity": 96, "url": "https://open.spotify.com/track/0V3dsPmy4NqIUZSp"},
+        {"name": "As It Was",            "artist": "Harry Styles",                  "album": "Harry's House",             "popularity": 92, "url": "https://open.spotify.com/track/7qiZfU4dY1lsylvN"},
+        {"name": "Heat Waves",           "artist": "Glass Animals",                 "album": "Dreamland",                 "popularity": 88, "url": "https://open.spotify.com/track/2takcwFXGpVSXi3R"},
+        {"name": "Sunroof",              "artist": "Nicky Youre",                   "album": "Sunroof",                   "popularity": 87, "url": "https://open.spotify.com/track/4rVrcmK72nG8eQ5B"},
+        {"name": "Running Up That Hill", "artist": "Kate Bush",                     "album": "Stranger Things Vol. 1",    "popularity": 90, "url": "https://open.spotify.com/track/7qIVTtaOfHLSKc0"},
+        {"name": "Flowers",             "artist": "Miley Cyrus",                   "album": "Endless Summer Vacation",   "popularity": 91, "url": "https://open.spotify.com/track/4rVrcmK72nG8eQ5Bo"},
+        {"name": "Industry Baby",        "artist": "Lil Nas X & Jack Harlow",       "album": "Montero",                   "popularity": 85, "url": "https://open.spotify.com/track/2takcwFXGpVSXi3R"},
+        {"name": "Vampire",              "artist": "Olivia Rodrigo",                "album": "GUTS",                      "popularity": 84, "url": "https://open.spotify.com/track/2takcwFXGpVSXi3R"},
+        {"name": "Dance the Night",      "artist": "Dua Lipa",                      "album": "Barbie The Album",          "popularity": 89, "url": "https://open.spotify.com/track/2takcwFXGpVSXi3R"},
+        {"name": "Cruel Summer",         "artist": "Taylor Swift",                  "album": "Lover",                     "popularity": 92, "url": "https://open.spotify.com/track/7qiZfU4dY1lsylvN"},
     ]
 
     # ── Helpers ──────────────────────────────────────────────────────────

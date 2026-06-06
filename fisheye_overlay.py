@@ -4,202 +4,46 @@ No screenshots, no Toplevel.
 
 How it works
 ------------
-A tkinter Canvas is placed over the entire parent window using place().
-It renders a pre-built RGBA image containing:
+A Canvas with bg='' is placed over the entire parent window using place().
+bg='' tells Tk not to paint the canvas background at all, so the sibling
+widgets rendered beneath it remain visible through the undrawn areas.
 
-  1. Dark vignette from edges + rounded corners  (existing)
-  2. Barrel-distorted scanlines                  (NEW — key fisheye cue)
-  3. Lens glare highlight                        (NEW — reinforces dome shape)
+The CRT effects are drawn as individual Canvas items:
+  • Barrel-distorted scanlines  — create_line with curved point arrays
+  • Vignette                    — stipple-filled bands at each edge
+  • Lens glare highlight        — stipple-filled oval near the top
+  • Rounded corner masks        — filled arcs at each corner
 
-Barrel-distorting the scanlines is the core trick: straight horizontal
-stripes look flat, but curved ones fool the eye into perceiving a convex
-CRT dome even though the underlying widget pixels are never moved.
-
-On Windows a plain Canvas intercepts mouse events. We fix this by binding
-every relevant event on the canvas and re-dispatching it to whichever widget
-sits underneath using winfo_containing().
+Mouse events that hit the canvas are caught and re-dispatched to whichever
+widget sits underneath so clicking, dragging, and scrolling still work.
 """
 
 import tkinter as tk
-from PIL import Image, ImageDraw, ImageFilter, ImageTk
+import math
 
 # ── tunables ──────────────────────────────────────────────────────────────────
-CORNER_R    = 26     # rounded corner radius in pixels
-EDGE_FADE   = 44     # vignette depth from each edge in pixels
-VIGNETTE_A  = 160    # max vignette opacity (0–255); lower = subtler
+EDGE_FADE      = 52      # vignette depth from each edge in pixels
+VIGNETTE_RINGS = 7       # number of concentric stipple bands
+CORNER_R       = 28      # corner-mask radius in pixels
 
-BARREL_K    = 0.18   # barrel distortion strength for scanlines (0 = flat, 0.3 = strong bulge)
-SCAN_STEP   = 3      # pixels between scanlines
-SCAN_ALPHA  = 22     # scanline darkness (0–255)
+BARREL_K       = 0.18    # barrel-distortion strength (0 = flat, 0.3 = strong)
+SCAN_STEP      = 3       # rows between scanlines
+SCAN_SAMPLES   = 30      # horizontal sample points per scanline curve
 
-GLARE_A     = 18     # peak opacity of the lens-glare highlight (keep subtle, 10–30)
-GLARE_POS   = 0.28   # vertical centre of glare as fraction of height (0 = top)
-
-REFRESH_MS  = 300    # ms between redraws (only matters on window resize)
+GLARE_POS      = 0.26    # glare centre as fraction of window height
+REFRESH_MS     = 350     # ms between layout checks (resize guard)
 # ─────────────────────────────────────────────────────────────────────────────
 
-
-def _build_overlay_fast(w: int, h: int) -> Image.Image:
-    """
-    Build an RGBA overlay image using numpy for speed.
-
-    Alpha channel encodes darkening (black pixels, variable alpha).
-    An additive white layer encodes the lens glare brightening.
-    """
-    import numpy as np
-
-    # ── 1. Vignette ───────────────────────────────────────────────────────────
-    alpha = np.zeros((h, w), dtype=np.float32)
-    for i in range(EDGE_FADE):
-        t = i / EDGE_FADE
-        a = VIGNETTE_A * (1.0 - t) ** 2.0
-        alpha[i, :]      = np.maximum(alpha[i, :],      a)
-        alpha[h-1-i, :]  = np.maximum(alpha[h-1-i, :],  a)
-        alpha[:, i]      = np.maximum(alpha[:, i],      a)
-        alpha[:, w-1-i]  = np.maximum(alpha[:, w-1-i],  a)
-
-    alpha = np.clip(alpha, 0, 255).astype(np.uint8)
-    vig_img = Image.fromarray(alpha, mode="L")
-    vig_img = vig_img.filter(ImageFilter.GaussianBlur(radius=EDGE_FADE * 0.4))
-    alpha   = np.array(vig_img, dtype=np.float32)
-
-    # ── 2. Rounded corners ────────────────────────────────────────────────────
-    corner = Image.new("L", (w, h), 255)
-    ImageDraw.Draw(corner).rounded_rectangle(
-        [0, 0, w - 1, h - 1], radius=CORNER_R, fill=0
-    )
-    corner = corner.filter(ImageFilter.GaussianBlur(radius=5))
-    c_arr  = np.array(corner, dtype=np.float32)
-
-    combined = np.maximum(alpha, c_arr)
-
-    # ── 3. Barrel-distorted scanlines ─────────────────────────────────────────
-    #
-    # For every pixel (x, y) we compute where it would land after barrel
-    # distortion and check whether that *distorted* y coordinate falls on a
-    # scanline.  The result: scanlines that bow outward in the centre, giving
-    # the strong visual cue of a convex CRT screen.
-    #
-    cx = w / 2.0
-    cy = h / 2.0
-
-    # Build coordinate grids (float32 for speed)
-    xx = np.tile(np.arange(w, dtype=np.float32), (h, 1))          # (h, w)
-    yy = np.tile(np.arange(h, dtype=np.float32).reshape(-1, 1), (1, w))
-
-    # Normalise to [-1, 1]
-    xn = (xx - cx) / cx
-    yn = (yy - cy) / cy
-    r2 = xn * xn + yn * yn
-
-    # Barrel distortion: push outward from centre
-    yn_d = yn * (1.0 + BARREL_K * r2)
-
-    # Map back to pixel space
-    yd_px = yn_d * cy + cy                                          # (h, w)
-
-    # A pixel is "on a scanline" if its distorted y is in the dark stripe band
-    on_scan = ((yd_px.astype(np.int32)) % SCAN_STEP == 0)          # bool (h, w)
-
-    # Add scanline darkness — clamp to 255
-    combined = np.where(on_scan, np.minimum(combined + SCAN_ALPHA, 255), combined)
-
-    # ── 4. Lens glare highlight ───────────────────────────────────────────────
-    #
-    # A soft elliptical bright spot near the top-centre of the screen,
-    # simulating light reflecting off the convex CRT glass.
-    # Implemented as a *separate* white RGBA layer composited additively.
-    #
-    glare_cx = w * 0.50
-    glare_cy = h * GLARE_POS
-    glare_rx = w * 0.28          # horizontal radius of the glare blob
-    glare_ry = h * 0.14          # vertical radius
-
-    xg = (xx - glare_cx) / glare_rx
-    yg = (yy - glare_cy) / glare_ry
-    glare_r2 = xg * xg + yg * yg
-
-    # Gaussian fall-off; fully zero outside radius 1
-    glare_alpha = np.where(
-        glare_r2 < 4.0,
-        GLARE_A * np.exp(-glare_r2 * 1.2),
-        0.0,
-    ).astype(np.uint8)
-
-    # ── 5. Assemble final RGBA image ──────────────────────────────────────────
-    #
-    # Dark layer (vignette + corners + curved scanlines)
-    final_dark = np.clip(combined, 0, 255).astype(np.uint8)
-
-    # Start with fully transparent black
-    rgba = np.zeros((h, w, 4), dtype=np.uint8)
-    rgba[:, :, 3] = final_dark          # black, variable alpha = darkening
-
-    out = Image.fromarray(rgba, "RGBA")
-
-    # Composite the glare highlight on top (white, additive)
-    glare_img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    glare_arr = np.zeros((h, w, 4), dtype=np.uint8)
-    glare_arr[:, :, 0] = 255            # R
-    glare_arr[:, :, 1] = 255            # G
-    glare_arr[:, :, 2] = 255            # B
-    glare_arr[:, :, 3] = glare_alpha    # A (variable)
-    glare_img = Image.fromarray(glare_arr, "RGBA")
-
-    # Alpha-composite: glare on top of dark overlay
-    out = Image.alpha_composite(out, glare_img)
-    return out
-
-
-def _build_overlay_slow(w: int, h: int) -> Image.Image:
-    """Pure-PIL fallback (no numpy). Fisheye effect is omitted; only vignette."""
-    vig = Image.new("L", (w, h), 0)
-    vd  = ImageDraw.Draw(vig)
-    for i in range(EDGE_FADE):
-        t = i / EDGE_FADE
-        a = int(VIGNETTE_A * (1.0 - t) ** 2.0)
-        vd.rectangle([i, i, w - 1 - i, h - 1 - i], outline=a)
-    vig = vig.filter(ImageFilter.GaussianBlur(radius=EDGE_FADE * 0.4))
-
-    corner = Image.new("L", (w, h), 255)
-    ImageDraw.Draw(corner).rounded_rectangle(
-        [0, 0, w - 1, h - 1], radius=CORNER_R, fill=0
-    )
-    corner = corner.filter(ImageFilter.GaussianBlur(radius=5))
-
-    combined = Image.new("L", (w, h), 0)
-    for y in range(h):
-        for x in range(w):
-            combined.putpixel(
-                (x, y),
-                min(255, max(vig.getpixel((x, y)), corner.getpixel((x, y))))
-            )
-    for y in range(0, h, SCAN_STEP):
-        for x in range(w):
-            old = combined.getpixel((x, y))
-            combined.putpixel((x, y), min(255, old + SCAN_ALPHA))
-
-    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    out.putalpha(combined)
-    return out
-
-
-# pick fastest available implementation
-try:
-    import numpy as _np
-    _build = _build_overlay_fast
-except ImportError:
-    _build = _build_overlay_slow
+# Stipple gets *less* dense from outside (ring 0) → inside (ring N-1).
+# gray75 = 75 % opaque, gray12 = 12 % opaque.
+_STIPPLE = ["gray75", "gray75", "gray50", "gray50", "gray25", "gray12", "gray12"]
 
 
 class FisheyeOverlay:
     """
-    CRT vignette + barrel-distorted scanlines + lens glare,
-    rendered as a canvas overlay inside the parent window.
-
-    The canvas sits on top of all widgets using place(relwidth=1, relheight=1).
-    Mouse events that hit the canvas are caught and re-dispatched to the real
-    widget underneath so clicking, dragging, and scrolling all work normally.
+    CRT overlay drawn as Canvas items on a background-less Canvas.
+    The Canvas bg='' prevents the widget from painting its own background,
+    so the content widgets beneath show through untouched areas.
     """
 
     _FORWARD = (
@@ -210,20 +54,27 @@ class FisheyeOverlay:
         "<Enter>", "<Leave>",
     )
 
-    def __init__(self, parent: tk.Tk, enabled: bool = True):
-        self._parent  = parent
-        self._enabled = enabled
-        self._job     = None
-        self._photo   = None
-        self._last_wh = (0, 0)
+    def __init__(self, parent: tk.Tk, enabled: bool = True,
+                 scan_color: str = "#000000"):
+        self._parent     = parent
+        self._enabled    = enabled
+        self._job        = None
+        self._last_wh    = (0, 0)
+        self._scan_color = scan_color
 
-        self._canvas = tk.Canvas(
-            parent,
-            highlightthickness=0,
-            borderwidth=0,
-            bg=parent.cget("bg"),
-            cursor="",
-        )
+        # bg='' → Tk skips painting the canvas background entirely,
+        # letting already-drawn sibling widgets remain visible.
+        # If the empty string is rejected (rare), fall back to window bg.
+        try:
+            self._canvas = tk.Canvas(
+                parent, bg="",
+                highlightthickness=0, borderwidth=0,
+            )
+        except tk.TclError:
+            self._canvas = tk.Canvas(
+                parent, bg=parent.cget("bg"),
+                highlightthickness=0, borderwidth=0,
+            )
 
         if enabled:
             self._show()
@@ -239,7 +90,7 @@ class FisheyeOverlay:
                 self._job = None
             self._canvas.place_forget()
         else:
-            self._last_wh = (0, 0)   # force rebuild
+            self._last_wh = (0, 0)   # force full redraw
             self._show()
 
     def destroy(self):
@@ -259,16 +110,14 @@ class FisheyeOverlay:
         self._schedule()
 
     def _bind_passthrough(self):
-        """
-        Re-dispatch every mouse event to the actual widget under the cursor,
-        skipping the canvas itself, so the overlay is invisible to interaction.
-        """
+        """Re-dispatch mouse events to the real widget under the pointer."""
         def _forward(event):
             target = event.widget.winfo_containing(event.x_root, event.y_root)
             if target and target is not self._canvas:
                 try:
                     target.event_generate(
-                        event.type.name if hasattr(event.type, "name") else str(event.type),
+                        event.type.name if hasattr(event.type, "name")
+                        else str(event.type),
                         x=event.x, y=event.y,
                         rootx=event.x_root, rooty=event.y_root,
                         delta=getattr(event, "delta", 0),
@@ -296,10 +145,106 @@ class FisheyeOverlay:
             else:
                 self._canvas.bind(seq, _forward, add=False)
 
+    # ── drawing ───────────────────────────────────────────────────────────────
+
+    def _draw_crt(self, w: int, h: int):
+        """Build all CRT canvas items from scratch."""
+        c = self._canvas
+        c.delete("crt")
+
+        cx, cy = w / 2.0, h / 2.0
+        k      = BARREL_K
+
+        # ── 1. Barrel-distorted scanlines ─────────────────────────────────────
+        #
+        # Forward barrel map (source → screen):
+        #   screen_yn = yn0 * (1 + k * (sxn² + yn0²))
+        #
+        # A flat horizontal line in source space bows OUTWARD on screen,
+        # giving the classic CRT convex-dome appearance.
+        #
+        step_xn = 2.0 / SCAN_SAMPLES
+        for y0 in range(0, h + SCAN_STEP, SCAN_STEP):
+            yn0 = (y0 - cy) / cy
+            pts = []
+            for i in range(SCAN_SAMPLES + 1):
+                sxn = -1.0 + i * step_xn
+                syn = yn0 * (1.0 + k * (sxn * sxn + yn0 * yn0))
+                pts.append(sxn * cx + cx)
+                pts.append(syn * cy + cy)
+            if len(pts) >= 4:
+                c.create_line(
+                    pts,
+                    fill=self._scan_color,
+                    width=1,
+                    smooth=True,
+                    tags="crt",
+                )
+
+        # ── 2. Vignette — concentric stipple bands at each edge ───────────────
+        #
+        # Ring 0 is the outermost (darkest / highest stipple density).
+        # Ring N-1 is the innermost (lightest / lowest stipple density).
+        #
+        band = max(1, EDGE_FADE // VIGNETTE_RINGS)
+        for ring in range(VIGNETTE_RINGS):
+            stip  = _STIPPLE[min(ring, len(_STIPPLE) - 1)]
+            outer = ring * band
+            inner = (ring + 1) * band
+            # Top strip
+            c.create_rectangle(0, outer, w, inner,
+                                fill="black", outline="", stipple=stip, tags="crt")
+            # Bottom strip
+            c.create_rectangle(0, h - inner, w, h - outer,
+                                fill="black", outline="", stipple=stip, tags="crt")
+            # Left strip
+            c.create_rectangle(outer, 0, inner, h,
+                                fill="black", outline="", stipple=stip, tags="crt")
+            # Right strip
+            c.create_rectangle(w - inner, 0, w - outer, h,
+                                fill="black", outline="", stipple=stip, tags="crt")
+
+        # ── 3. Rounded corner masks ───────────────────────────────────────────
+        #
+        # Draw a filled black arc at each corner that covers the pixels
+        # outside the rounded rectangle, mimicking a CRT bezel curve.
+        #
+        r = CORNER_R
+        corners = [
+            (0,     0,     0 + r*2,   r*2,   90,  90),   # top-left
+            (w-r*2, 0,     w,         r*2,   0,   90),   # top-right
+            (0,     h-r*2, r*2,       h,     180, 90),   # bottom-left
+            (w-r*2, h-r*2, w,         h,     270, 90),   # bottom-right
+        ]
+        for x0, y0, x1, y1, start, extent in corners:
+            # Filled quarter-circle mask: outline black arc + filled wedge
+            c.create_arc(
+                x0, y0, x1, y1,
+                start=start, extent=extent,
+                style=tk.PIESLICE,
+                fill="", outline="black", width=max(2, r // 3),
+                tags="crt",
+            )
+
+        # ── 4. Lens glare highlight ───────────────────────────────────────────
+        #
+        # A soft white ellipse near the top-centre simulates light reflecting
+        # off the curved CRT glass.  gray12 stipple keeps it very subtle.
+        #
+        gx  = w * 0.50
+        gy  = h * GLARE_POS
+        grx = w * 0.22
+        gry = h * 0.09
+        c.create_oval(
+            gx - grx, gy - gry, gx + grx, gy + gry,
+            fill="white", outline="",
+            stipple="gray12",
+            tags="crt",
+        )
+
     def _refresh(self):
         if not self._enabled:
             return
-
         self._parent.update_idletasks()
         w = self._parent.winfo_width()
         h = self._parent.winfo_height()
@@ -308,13 +253,9 @@ class FisheyeOverlay:
 
         if (w, h) != self._last_wh:
             self._last_wh = (w, h)
-            img           = _build(w, h)
-            self._photo   = ImageTk.PhotoImage(img)
             self._canvas.config(width=w, height=h)
+            self._draw_crt(w, h)
 
-        self._canvas.delete("all")
-        if self._photo:
-            self._canvas.create_image(0, 0, anchor=tk.NW, image=self._photo)
         tk.Misc.lift(self._canvas)
 
     def _schedule(self):

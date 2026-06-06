@@ -1,8 +1,8 @@
 {
   "palette": "terminal",
-  "x": 1506,
-  "y": 626,
-  "fisheye": false,
+  "x": 1397,
+  "y": 533,
+  "fisheye": true,
   "drop_shadow": false,
   "width": 380,
   "height": 450

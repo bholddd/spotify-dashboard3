@@ -22,23 +22,23 @@ import tkinter as tk
 import math
 
 # ── tunables ─────────────────────────────────────────────────────────────
-EDGE_FADE      = 52      # vignette depth from each edge in pixels
-VIGNETTE_RINGS = 7       # number of concentric stipple bands
-CORNER_R       = 28      # corner-mask radius in pixels
+EDGE_FADE      = 35      # vignette depth from each edge in pixels (reduced)
+VIGNETTE_RINGS = 5       # number of concentric stipple bands (reduced)
+CORNER_R       = 20      # corner-mask radius in pixels (reduced)
 
-BARREL_K       = 0.18    # barrel-distortion strength (0 = flat, 0.3 = strong)
-SCAN_STEP      = 3       # rows between scanlines
-SCAN_SAMPLES   = 30      # horizontal sample points per scanline curve
+BARREL_K       = 0.08    # barrel-distortion strength (0 = flat, 0.3 = strong) - REDUCED
+SCAN_STEP      = 4       # rows between scanlines (increased = fewer lines)
+SCAN_SAMPLES   = 25      # horizontal sample points per scanline curve
 
-GLARE_POS      = 0.26    # glare centre as fraction of window height
-GLARE_WIDTH    = 0.28    # glare width as fraction of window width
-GLARE_HEIGHT   = 0.12    # glare height as fraction of window height
+GLARE_POS      = 0.12    # glare centre as fraction of window height
+GLARE_WIDTH    = 0.12    # glare width as fraction of window width
+GLARE_HEIGHT   = 0.04    # glare height as fraction of window height
 REFRESH_MS     = 350     # ms between layout checks (resize guard)
 # ────────────────────────────────────────────────────────────────────────
 
 # Stipple gets *less* dense from outside (ring 0) → inside (ring N-1).
 # gray75 = 75 % opaque, gray12 = 12 % opaque.
-_STIPPLE = ["gray75", "gray75", "gray50", "gray50", "gray25", "gray12", "gray12"]
+_STIPPLE = ["gray50", "gray25", "gray12", "gray12", "gray12"]
 
 
 class FisheyeOverlay:
@@ -224,7 +224,7 @@ class FisheyeOverlay:
                 x0, y0, x1, y1,
                 start=start, extent=extent,
                 style=tk.PIESLICE,
-                fill="", outline="black", width=max(2, r // 3),
+                fill="", outline="black", width=max(1, r // 4),
                 tags="crt",
             )
 

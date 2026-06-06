@@ -21,7 +21,7 @@ widget sits underneath so clicking, dragging, and scrolling still work.
 import tkinter as tk
 import math
 
-# ── tunables ──────────────────────────────────────────────────────────────────
+# ── tunables ─────────────────────────────────────────────────────────────
 EDGE_FADE      = 52      # vignette depth from each edge in pixels
 VIGNETTE_RINGS = 7       # number of concentric stipple bands
 CORNER_R       = 28      # corner-mask radius in pixels
@@ -31,8 +31,10 @@ SCAN_STEP      = 3       # rows between scanlines
 SCAN_SAMPLES   = 30      # horizontal sample points per scanline curve
 
 GLARE_POS      = 0.26    # glare centre as fraction of window height
+GLARE_WIDTH    = 0.28    # glare width as fraction of window width
+GLARE_HEIGHT   = 0.12    # glare height as fraction of window height
 REFRESH_MS     = 350     # ms between layout checks (resize guard)
-# ─────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────
 
 # Stipple gets *less* dense from outside (ring 0) → inside (ring N-1).
 # gray75 = 75 % opaque, gray12 = 12 % opaque.
@@ -80,7 +82,7 @@ class FisheyeOverlay:
             self._show()
         self._bind_passthrough()
 
-    # ── public ────────────────────────────────────────────────────────────────
+    # ── public ────────────────────────────────────────────────────────────
 
     def set_enabled(self, enabled: bool):
         self._enabled = enabled
@@ -102,7 +104,7 @@ class FisheyeOverlay:
         except tk.TclError:
             pass
 
-    # ── internal ──────────────────────────────────────────────────────────────
+    # ── internal ───────────────────────────────────────────────────────────
 
     def _show(self):
         self._canvas.place(x=0, y=0, relwidth=1.0, relheight=1.0)
@@ -145,7 +147,7 @@ class FisheyeOverlay:
             else:
                 self._canvas.bind(seq, _forward, add=False)
 
-    # ── drawing ───────────────────────────────────────────────────────────────
+    # ── drawing ──────────────────────────────────────────────────────────
 
     def _draw_crt(self, w: int, h: int):
         """Build all CRT canvas items from scratch."""
@@ -229,14 +231,21 @@ class FisheyeOverlay:
         # ── 4. Lens glare highlight ───────────────────────────────────────────
         #
         # A soft white ellipse near the top-centre simulates light reflecting
-        # off the curved CRT glass.  gray12 stipple keeps it very subtle.
+        # off the curved CRT glass. Apply barrel distortion to make it follow
+        # the fisheye curve naturally.
         #
         gx  = w * 0.50
         gy  = h * GLARE_POS
-        grx = w * 0.22
-        gry = h * 0.09
+        grx = w * GLARE_WIDTH / 2.0
+        gry = h * GLARE_HEIGHT / 2.0
+        
+        # Apply barrel distortion to glare oval vertical position
+        gyn = (gy - cy) / cy
+        gyn_distorted = gyn * (1.0 + k * (gyn * gyn))
+        gy_distorted = gyn_distorted * cy + cy
+        
         c.create_oval(
-            gx - grx, gy - gry, gx + grx, gy + gry,
+            gx - grx, gy_distorted - gry, gx + grx, gy_distorted + gry,
             fill="white", outline="",
             stipple="gray12",
             tags="crt",

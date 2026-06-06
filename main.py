@@ -15,7 +15,6 @@ import requests
 from PIL import Image, ImageDraw, ImageTk
 from spotify_auth import SpotifyAuthenticator
 from spotify_api import SpotifyAPI
-from fisheye_overlay import FisheyeOverlay
 
 
 # ─── Retro font ─────────────────────────────────────────────────────────
@@ -145,14 +144,11 @@ class SpotifyWidget:
         self.demo_mode     = False
         self.image_cache   = {}
         self.item_images   = []
-        self.fisheye_enabled = False
-        self._fisheye_overlay = None
 
         # Settings
         self.config_file = "widget_config.json"
         self.settings    = self.load_settings()
         self.current_palette = self.settings.get("palette", "terminal")
-        self.fisheye_enabled = self.settings.get("fisheye", False)
         if self.current_palette not in self.PALETTES:
             self.current_palette = "terminal"
 
@@ -183,16 +179,12 @@ class SpotifyWidget:
         self.display_songs()
         print("Widget loaded with demo data!")
 
-        # Create fisheye overlay only if enabled
-        if self.fisheye_enabled:
-            self._fisheye_overlay = FisheyeOverlay(self.root, enabled=True)
-
         # self.authenticate()   # Uncomment to enable live Spotify data
 
     # ── Settings persistence ──────────────────────────────────────────────────
 
     def load_settings(self):
-        defaults = {"palette": "terminal", "x": None, "y": None, "fisheye": False}
+        defaults = {"palette": "terminal", "x": None, "y": None}
         if os.path.exists(self.config_file):
             try:
                 with open(self.config_file) as f:
@@ -203,7 +195,6 @@ class SpotifyWidget:
 
     def save_settings(self):
         self.settings["palette"] = self.current_palette
-        self.settings["fisheye"] = self.fisheye_enabled
         self.settings["x"] = self.root.winfo_x()
         self.settings["y"] = self.root.winfo_y()
         with open(self.config_file, "w") as f:
@@ -256,20 +247,6 @@ class SpotifyWidget:
         if self.tracks_data:
             self.display_songs()
         if reopen:
-            self.open_settings()
-
-    def toggle_fisheye(self):
-        self.fisheye_enabled = not self.fisheye_enabled
-        if self.fisheye_enabled:
-            if self._fisheye_overlay is None:
-                self._fisheye_overlay = FisheyeOverlay(self.root, enabled=True)
-            else:
-                self._fisheye_overlay.set_enabled(True)
-        else:
-            if self._fisheye_overlay is not None:
-                self._fisheye_overlay.set_enabled(False)
-        # Re-open settings panel so the ON/OFF label refreshes immediately
-        if self.settings_open:
             self.open_settings()
 
     # ── UI construction ───────────────────────────────────────────────────────
@@ -468,36 +445,6 @@ class SpotifyWidget:
             fill=tk.X, padx=10, pady=4
         )
 
-        fisheye_status = "ON" if self.fisheye_enabled else "OFF"
-        fisheye_color  = self.fg_color if self.fisheye_enabled else self.text_secondary
-        tk.Label(
-            self.settings_frame,
-            text=f"> FISHEYE: {fisheye_status}",
-            font=(FONT, 8),
-            bg=self.secondary_bg,
-            fg=fisheye_color,
-        ).pack(anchor=tk.W, padx=14, pady=(4, 4))
-
-        fisheye_btn_bg = self.accent_color if self.fisheye_enabled else self.tertiary_bg
-        fisheye_btn_fg = self._contrast_fg(fisheye_btn_bg)
-        tk.Button(
-            self.settings_frame,
-            text="TOGGLE FISHEYE",
-            font=(FONT, 7, "bold"),
-            bg=fisheye_btn_bg,
-            fg=fisheye_btn_fg,
-            activebackground=self.accent_color,
-            activeforeground=self._contrast_fg(self.accent_color),
-            border=1,
-            relief=tk.RAISED,
-            padx=6,
-            pady=3,
-            command=self.toggle_fisheye,
-        ).pack(padx=10, pady=(0, 10), fill=tk.X)
-
-        tk.Frame(self.settings_frame, bg=self.accent_color, height=1).pack(
-            fill=tk.X, padx=10, pady=4
-        )
         mode_text  = "DEMO MODE" if self.demo_mode else "LIVE DATA"
         mode_color = self.text_secondary if self.demo_mode else self.fg_color
         tk.Label(
@@ -828,11 +775,6 @@ def main():
     root = tk.Tk()
     app  = SpotifyWidget(root)
     root.mainloop()
-    try:
-        if app._fisheye_overlay:
-            app._fisheye_overlay.destroy()
-    except Exception:
-        pass
     app.save_settings()
 
 

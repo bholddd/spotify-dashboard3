@@ -2,7 +2,7 @@
   "palette": "terminal",
   "x": 1402,
   "y": 260,
-  "fisheye": true,
+  "fisheye": false,
   "drop_shadow": false,
   "width": 380,
   "height": 450

@@ -33,10 +33,10 @@ def _grab_hwnd(hwnd, w, h):
         gdi.DeleteDC(mem_dc)
         usr.ReleaseDC(hwnd, hdc)
 
-        # DIB is BGRA bottom-up; stride=-1 corrects vertical flip.
-        # PrintWindow on Windows also mirrors horizontally, so flip that too.
-        img = Image.frombytes("RGBA", (w, h), bytes(buf), "raw", "BGRA", 0, -1)
-        img = img.transpose(Image.FLIP_LEFT_RIGHT)
+        # DIB is BGRA bottom-up. The stride trick is unreliable across
+        # Windows versions — just decode normally then flip explicitly.
+        img = Image.frombytes("RGBA", (w, h), bytes(buf), "raw", "BGRA")
+        img = img.transpose(Image.FLIP_TOP_BOTTOM)
         return img.convert("RGB")
     except Exception as e:
         print(f"[fisheye] hwnd grab failed: {e}")
@@ -137,19 +137,44 @@ class FisheyeOverlay:
             self._top.attributes("-transparentcolor", "#010101")
         except tk.TclError:
             pass
-        try:
-            self._top.attributes("-disabled", True)
-        except tk.TclError:
-            pass
+
+        # Make the overlay click-through on Windows using WS_EX_TRANSPARENT.
+        # This lets all mouse events fall through to the parent window beneath,
+        # unlike -disabled which swallows events without forwarding them.
+        self._set_click_through()
 
         self._canvas = tk.Canvas(
             self._top, bg="#010101", highlightthickness=0, borderwidth=0,
         )
         self._canvas.pack(fill=tk.BOTH, expand=True)
         self._place_overlay()
+        self._top.update_idletasks()   # ensure HWND is fully created before click-through
+        self._set_click_through()
         self._schedule()
 
     # ── public ────────────────────────────────────────────────────────────────
+
+    def _set_click_through(self):
+        """
+        Windows: set WS_EX_TRANSPARENT | WS_EX_LAYERED on the overlay HWND.
+        This makes the window completely invisible to mouse hit-testing so
+        every click, drag and scroll goes straight to the window underneath.
+        No-op on non-Windows platforms (events pass through naturally there).
+        """
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            hwnd = self._top.winfo_id()
+            GWL_EXSTYLE      = -20
+            WS_EX_LAYERED    = 0x00080000
+            WS_EX_TRANSPARENT = 0x00000020
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            ctypes.windll.user32.SetWindowLongW(
+                hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT
+            )
+        except Exception as e:
+            print(f"[fisheye] click-through setup failed: {e}")
 
     def set_enabled(self, enabled: bool):
         self._enabled = enabled
